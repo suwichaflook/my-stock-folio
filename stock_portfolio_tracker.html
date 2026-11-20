@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockFolio TH - ระบบบันทึกและติดตามพอร์ตการลงทุน</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Prompt & Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'Inter', 'sans-serif'],
+                        num: ['Inter', 'Prompt', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .font-num {
+            font-variant-numeric: tabular-nums;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 p-2 rounded-xl shadow-inner">
+                    <i class="fa-solid fa-chart-line text-xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2">
+                        StockFolio <span class="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full font-medium">PRO</span>
+                    </h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">ระบบบันทึกและติดตามพอร์ตการลงทุนอัจฉริยะ</p>
+                </div>
+            </div>
+
+            <!-- Currency Filter & Actions -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <!-- Currency View Selector -->
+                <div class="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+                    <button onclick="setCurrencyFilter('ALL')" id="btn-curr-ALL" class="px-2.5 py-1 text-xs font-medium rounded-md transition bg-blue-600 text-white">ทั้งหมด</button>
+                    <button onclick="setCurrencyFilter('THB')" id="btn-curr-THB" class="px-2.5 py-1 text-xs font-medium rounded-md transition text-slate-300 hover:text-white">🇹🇭 THB</button>
+                    <button onclick="setCurrencyFilter('USD')" id="btn-curr-USD" class="px-2.5 py-1 text-xs font-medium rounded-md transition text-slate-300 hover:text-white">🇺🇸 USD</button>
+                </div>
+
+                <!-- Exchange Rate Setting (USD to THB) -->
+                <div class="hidden md:flex items-center gap-1.5 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 text-xs" title="อัตราแลกเปลี่ยนสำหรับคำนวณรวมพอร์ตทั้งหมด">
+                    <span class="text-slate-400">1 USD =</span>
+                    <input type="number" id="usd-thb-rate" step="0.01" value="34.50" onchange="updateExchangeRate(this.value)" class="w-14 bg-slate-900 text-white font-num text-center rounded px-1 py-0.5 border border-slate-600 focus:outline-none focus:border-blue-500">
+                    <span class="text-slate-400">THB</span>
+                </div>
+
+                <!-- Add Transaction Button -->
+                <button onclick="openTransactionModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition flex items-center gap-2">
+                    <i class="fa-solid fa-plus"></i>
+                    <span class="hidden sm:inline">บันทึกรายการ</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Mobile Exchange Rate & Quick Tools Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl shadow-sm border border-slate-200/80">
+            <div class="flex items-center gap-2 text-xs sm:text-sm text-slate-600">
+                <span id="view-mode-badge" class="inline-flex items-center gap-1.5 font-medium text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg">
+                    <i class="fa-solid fa-globe text-blue-600"></i> แสดงผลรวมทุกสกุลเงิน (แปลงเป็น THB)
+                </span>
+                <div class="flex md:hidden items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg text-xs">
+                    <span>1 USD=</span>
+                    <input type="number" id="usd-thb-rate-mobile" step="0.01" value="34.50" onchange="updateExchangeRate(this.value)" class="w-12 bg-white text-slate-900 font-num text-center rounded border border-slate-300">
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <button onclick="loadSampleData()" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> ข้อมูลตัวอย่าง
+                </button>
+                <button onclick="exportDataJSON()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5" title="สำรองข้อมูลเป็นไฟล์ JSON">
+                    <i class="fa-solid fa-download"></i> Export
+                </button>
+                <label class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 cursor-pointer" title="นำเข้าข้อมูลจากไฟล์ JSON">
+                    <i class="fa-solid fa-upload"></i> Import
+                    <input type="file" id="import-file" accept=".json" class="hidden" onchange="importDataJSON(event)">
+                </label>
+                <button onclick="openClearModal()" class="text-xs bg-rose-50 hover:bg-rose-100 text-rose-600 px-2.5 py-1.5 rounded-lg font-medium transition" title="ล้างข้อมูลทั้งหมด">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 1. Dashboard Summary Cards -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <!-- Total Invested -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-500 mb-2">
+                    <span class="text-xs font-medium uppercase tracking-wider">เงินลงทุนรวม (Cost Basis)</span>
+                    <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <i class="fa-solid fa-wallet"></i>
+                    </div>
+                </div>
+                <div>
+                    <div id="stat-invested" class="text-xl sm:text-2xl font-bold font-num text-slate-900">฿0.00</div>
+                    <p class="text-xs text-slate-400 mt-1">ต้นทุนสุทธิที่ถือครองปัจจุบัน</p>
+                </div>
+            </div>
+
+            <!-- Total Current Value -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-500 mb-2">
+                    <span class="text-xs font-medium uppercase tracking-wider">มูลค่าพอร์ตปัจจุบัน</span>
+                    <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                        <i class="fa-solid fa-sack-dollar"></i>
+                    </div>
+                </div>
+                <div>
+                    <div id="stat-current-value" class="text-xl sm:text-2xl font-bold font-num text-slate-900">฿0.00</div>
+                    <p class="text-xs text-slate-400 mt-1">คำนวณจากราคาตลาดล่าสุด</p>
+                </div>
+            </div>
+
+            <!-- Net Profit/Loss (Unrealized) -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-500 mb-2">
+                    <span class="text-xs font-medium uppercase tracking-wider">กำไร/ขาดทุน (Unrealized)</span>
+                    <div id="stat-pnl-icon-bg" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
+                        <i id="stat-pnl-icon" class="fa-solid fa-chart-simple"></i>
+                    </div>
+                </div>
+                <div>
+                    <div id="stat-pnl" class="text-xl sm:text-2xl font-bold font-num text-slate-900">฿0.00</div>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span id="stat-pnl-percent" class="text-xs font-semibold font-num px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">0.00%</span>
+                        <span id="stat-realized-pnl" class="text-xs text-slate-400 font-num" title="กำไร/ขาดทุนที่ขายทำกำไรไปแล้ว">ขายแล้ว: ฿0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Dividends -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-500 mb-2">
+                    <span class="text-xs font-medium uppercase tracking-wider">เงินปันผลรับสะสม</span>
+                    <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                        <i class="fa-solid fa-hand-holding-dollar"></i>
+                    </div>
+                </div>
+                <div>
+                    <div id="stat-dividends" class="text-xl sm:text-2xl font-bold font-num text-amber-600">฿0.00</div>
+                    <p id="stat-total-return" class="text-xs text-slate-500 mt-1 font-num">รวมปันผล+กำไร: ฿0.00</p>
+                </div>
+            </div>
+
+            <!-- Total Assets -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-500 mb-2">
+                    <span class="text-xs font-medium uppercase tracking-wider">หลักทรัพย์ที่ถือครอง</span>
+                    <div class="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
+                        <i class="fa-solid fa-layer-group"></i>
+                    </div>
+                </div>
+                <div>
+                    <div id="stat-assets-count" class="text-xl sm:text-2xl font-bold font-num text-slate-900">0 ตัว</div>
+                    <p id="stat-tx-count" class="text-xs text-slate-400 mt-1">จากทั้งหมด 0 รายการ</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Charts Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Portfolio Allocation (Donut Chart) -->
+            <div class="lg:col-span-5 bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-800">สัดส่วนการลงทุน (Allocation)</h2>
+                        <p class="text-xs text-slate-500">คิดตามมูลค่าปัจจุบันของหุ้นแต่ละตัว</p>
+                    </div>
+                    <span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg font-medium">% พอร์ต</span>
+                </div>
+                <div class="relative flex-grow flex items-center justify-center min-h-[240px]">
+                    <canvas id="allocationChart"></canvas>
+                    <div id="allocation-empty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-400 text-sm">
+                        <i class="fa-solid fa-chart-pie text-3xl mb-2 text-slate-300"></i>
+                        <span>ยังไม่มีข้อมูลหุ้นในพอร์ต</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cost vs Current Value (Bar Chart) -->
+            <div class="lg:col-span-7 bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-800">เปรียบเทียบต้นทุน vs มูลค่าปัจจุบัน</h2>
+                        <p class="text-xs text-slate-500">แสดงผลต่างกำไร/ขาดทุนรายหลักทรัพย์</p>
+                    </div>
+                    <div class="flex items-center gap-3 text-xs">
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-slate-400 inline-block"></span> ต้นทุนรวม</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-blue-600 inline-block"></span> มูลค่าปัจจุบัน</span>
+                    </div>
+                </div>
+                <div class="relative flex-grow flex items-center justify-center min-h-[240px]">
+                    <canvas id="comparisonChart"></canvas>
+                    <div id="comparison-empty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-400 text-sm">
+                        <i class="fa-solid fa-chart-column text-3xl mb-2 text-slate-300"></i>
+                        <span>เพิ่มรายการซื้อหุ้นเพื่อแสดงกราฟเปรียบเทียบ</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Holdings Summary Table -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+            <div class="p-5 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-briefcase text-blue-600"></i> สรุปรายตัวหุ้นที่ถือครอง (Holdings)
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-0.5">สามารถคลิกแก้ไข <span class="font-semibold text-blue-600">"ราคาตลาดปัจจุบัน"</span> ในตารางได้โดยตรงเพื่ออัปเดตกำไร/ขาดทุนทันที</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="inline-flex items-center gap-2 text-xs text-slate-600 cursor-pointer bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+                        <input type="checkbox" id="toggle-sold-stocks" onchange="renderAll()" class="rounded text-blue-600 focus:ring-blue-500">
+                        <span>แสดงหุ้นที่ขายหมดแล้ว (0 หุ้น)</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/80 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+                            <th class="py-3.5 px-4 font-semibold">ชื่อหุ้น / ตลาด</th>
+                            <th class="py-3.5 px-4 font-semibold text-right">จำนวนหุ้น</th>
+                            <th class="py-3.5 px-4 font-semibold text-right">ต้นทุนเฉลี่ย</th>
+                            <th class="py-3.5 px-4 font-semibold text-right">ต้นทุนรวม</th>
+                            <th class="py-3.5 px-4 font-semibold text-right bg-blue-50/40 text-blue-800">ราคาตลาดปัจจุบัน <i class="fa-solid fa-pen text-[10px] ml-1"></i></th>
+                            <th class="py-3.5 px-4 font-semibold text-right">มูลค่าปัจจุบัน</th>
+                            <th class="py-3.5 px-4 font-semibold text-right">กำไร / ขาดทุน</th>
+                            <th class="py-3.5 px-4 font-semibold text-right">ปันผลรับ</th>
+                            <th class="py-3.5 px-4 font-semibold text-center">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="holdings-tbody" class="divide-y divide-slate-100 text-sm">
+                        <!-- Dynamic Rows -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 4. Transaction History -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+            <div class="p-5 border-b border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-slate-600"></i> ประวัติการทำรายการ (Transaction History)
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-0.5">บันทึกการซื้อ ขาย และรับเงินปันผลทั้งหมด</p>
+                </div>
+
+                <!-- Search & Filter Controls -->
+                <div class="flex flex-wrap items-center gap-2">
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                        <input type="text" id="search-tx" oninput="renderTransactions()" placeholder="ค้นหาชื่อหุ้น, หมายเหตุ..." class="pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 w-44 sm:w-56">
+                    </div>
+                    <select id="filter-tx-type" onchange="renderTransactions()" class="py-1.5 px-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-slate-700">
+                        <option value="ALL">ทุกประเภท</option>
+                        <option value="BUY">ซื้อ (Buy)</option>
+                        <option value="SELL">ขาย (Sell)</option>
+                        <option value="DIVIDEND">ปันผล (Dividend)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/80 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+                            <th class="py-3 px-4 font-semibold">วันที่</th>
+                            <th class="py-3 px-4 font-semibold">ประเภท</th>
+                            <th class="py-3 px-4 font-semibold">ชื่อหุ้น</th>
+                            <th class="py-3 px-4 font-semibold text-right">จำนวนหุ้น</th>
+                            <th class="py-3 px-4 font-semibold text-right">ราคาต่อหุ้น / ยอดปันผล</th>
+                            <th class="py-3 px-4 font-semibold text-right">ค่าธรรมเนียม</th>
+                            <th class="py-3 px-4 font-semibold text-right">ยอดสุทธิรวม</th>
+                            <th class="py-3 px-4 font-semibold">หมายเหตุ / กลยุทธ์</th>
+                            <th class="py-3 px-4 font-semibold text-center">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactions-tbody" class="divide-y divide-slate-100 text-sm">
+                        <!-- Dynamic Rows -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
+            <p>© 2026 StockFolio TH — ข้อมูลทั้งหมดถูกบันทึกไว้ในเบราว์เซอร์ของคุณ (Local Storage) อย่างปลอดภัย</p>
+            <p>แนะนำ: กด <span class="font-semibold text-slate-700">Export</span> เป็นระยะเพื่อสำรองไฟล์ข้อมูลพอร์ตของคุณ</p>
+        </div>
+    </footer>
+
+    <!-- MODAL: Add / Edit Transaction -->
+    <div id="tx-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 hidden flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden border border-slate-200 my-auto">
+            <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <h3 id="modal-title" class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-plus-circle text-blue-600"></i> บันทึกรายการใหม่
+                </h3>
+                <button onclick="closeTransactionModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <form id="tx-form" onsubmit="handleTransactionSubmit(event)" class="p-6 space-y-4">
+                <input type="hidden" id="tx-id">
+
+                <!-- Transaction Type Tabs -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1.5">ประเภทธุรกรรม</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <label class="cursor-pointer">
+                            <input type="radio" name="txType" value="BUY" checked onchange="toggleFormFieldsByType()" class="peer sr-only">
+                            <div class="text-center py-2 px-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:border-emerald-600 transition">
+                                <i class="fa-solid fa-arrow-down-long mr-1"></i> ซื้อ (Buy)
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="txType" value="SELL" onchange="toggleFormFieldsByType()" class="peer sr-only">
+                            <div class="text-center py-2 px-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 peer-checked:bg-rose-600 peer-checked:text-white peer-checked:border-rose-600 transition">
+                                <i class="fa-solid fa-arrow-up-long mr-1"></i> ขาย (Sell)
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="txType" value="DIVIDEND" onchange="toggleFormFieldsByType()" class="peer sr-only">
+                            <div class="text-center py-2 px-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 peer-checked:bg-amber-500 peer-checked:text-white peer-checked:border-amber-500 transition">
+                                <i class="fa-solid fa-coins mr-1"></i> ปันผล (Div)
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Ticker & Currency -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">ชื่อย่อหุ้น (Symbol) <span class="text-rose-500">*</span></label>
+                        <input type="text" id="tx-symbol" required placeholder="เช่น PTT, AOT, AAPL, NVDA" oninput="this.value = this.value.toUpperCase(); autoFillCurrentPrice();" list="existing-symbols" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-semibold uppercase focus:outline-none focus:border-blue-500">
+                        <datalist id="existing-symbols"></datalist>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">สกุลเงิน / ตลาด</label>
+                        <select id="tx-currency" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm bg-white focus:outline-none focus:border-blue-500">
+                            <option value="THB">🇹🇭 THB (หุ้นไทย)</option>
+                            <option value="USD">🇺🇸 USD (หุ้นอเมริกา)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Date & Shares -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">วันที่ทำรายการ <span class="text-rose-500">*</span></label>
+                        <input type="date" id="tx-date" required class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div id="field-shares">
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">จำนวนหุ้น (Shares) <span class="text-rose-500">*</span></label>
+                        <input type="number" id="tx-shares" step="any" min="0.000001" placeholder="เช่น 100 หรือ 0.5" oninput="calculateModalPreview()" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-num focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <!-- Price & Fee -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label id="label-price" class="block text-xs font-semibold text-slate-700 mb-1">ราคาต่อหุ้นที่ซื้อ/ขาย <span class="text-rose-500">*</span></label>
+                        <input type="number" id="tx-price" step="any" min="0" required placeholder="0.00" oninput="calculateModalPreview()" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-num focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div id="field-fee">
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">ค่าคอมมิชชั่น / ภาษี (ถ้ามี)</label>
+                        <input type="number" id="tx-fee" step="any" min="0" value="0" placeholder="0.00" oninput="calculateModalPreview()" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-num focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <!-- Current Market Price (Optional / Auto-synced) -->
+                <div id="field-current-price" class="bg-blue-50/70 p-3 rounded-xl border border-blue-100">
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="text-xs font-semibold text-blue-900">ราคาตลาดปัจจุบัน (Current Market Price)</label>
+                        <span class="text-[11px] text-blue-600">ใช้คำนวณกำไร/ขาดทุน</span>
+                    </div>
+                    <input type="number" id="tx-current-price" step="any" min="0" placeholder="เว้นว่างไว้จะใช้ราคาที่ซื้อ/ขายล่าสุด" class="w-full px-3 py-1.5 bg-white border border-blue-200 rounded-lg text-sm font-num focus:outline-none focus:border-blue-500">
+                </div>
+
+                <!-- Note / Strategy -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">หมายเหตุ / กลยุทธ์การลงทุน</label>
+                    <input type="text" id="tx-note" placeholder="เช่น DCA รายเดือน, ซื้อสะสมปันผล, เก็งกำไรระยะสั้น" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:border-blue-500">
+                </div>
+
+                <!-- Live Calculation Summary -->
+                <div class="bg-slate-100 p-3 rounded-xl flex items-center justify-between text-sm">
+                    <span class="text-slate-600 font-medium">ยอดเงินสุทธิรายการนี้:</span>
+                    <span id="modal-total-preview" class="font-bold font-num text-base text-slate-900">0.00</span>
+                </div>
+
+                <!-- Submit Buttons -->
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeTransactionModal()" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition">ยกเลิก</button>
+                    <button type="submit" class="px-5 py-2 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition">
+                        <i class="fa-solid fa-check mr-1"></i> บันทึกข้อมูล
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Confirm Clear All Data -->
+    <div id="clear-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center space-y-4">
+            <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800">ยืนยันการล้างข้อมูลทั้งหมด?</h3>
+            <p class="text-sm text-slate-500">ข้อมูลรายการซื้อ-ขาย และราคาหุ้นทั้งหมดจะถูกลบออกจากเบราว์เซอร์และไม่สามารถกู้คืนได้</p>
+            <div class="flex items-center justify-center gap-3 pt-2">
+                <button onclick="closeClearModal()" class="px-4 py-2 rounded-xl text-sm font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition">ยกเลิก</button>
+                <button onclick="confirmClearAllData()" class="px-4 py-2 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white transition">ลบข้อมูลทั้งหมด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // ==========================================
+        // 1. STATE MANAGEMENT & LOCAL STORAGE
+        // ==========================================
+        const STORAGE_KEY = 'stockfolio_th_data_v1';
+
+        let appState = {
+            transactions: [],      // Array of { id, type, symbol, currency, date, shares, price, fee, note }
+            marketPrices: {},      // Object mapping "SYMBOL_CURRENCY" -> currentPrice (number)
+            usdToThb: 34.50,       // Exchange rate
+            currencyFilter: 'ALL'  // 'ALL', 'THB', 'USD'
+        };
+
+        let allocationChartInstance = null;
+        let comparisonChartInstance = null;
+
+        // Load data from localStorage
+        function loadState() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    appState.transactions = parsed.transactions || [];
+                    appState.marketPrices = parsed.marketPrices || {};
+                    appState.usdToThb = parsed.usdToThb || 34.50;
+                }
+            } catch (e) {
+                console.error("Failed to load state:", e);
+            }
+            document.getElementById('usd-thb-rate').value = appState.usdToThb;
+            document.getElementById('usd-thb-rate-mobile').value = appState.usdToThb;
+        }
+
+        // Save data to localStorage
+        function saveState() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    transactions: appState.transactions,
+                    marketPrices: appState.marketPrices,
+                    usdToThb: appState.usdToThb
+                }));
+            } catch (e) {
+                console.error("Failed to save state:", e);
+                showToast("เกิดข้อผิดพลาดในการบันทึกข้อมูล", "error");
+            }
+        }
+
+        // ==========================================
+        // 2. PORTFOLIO CALCULATION ENGINE
+        // ==========================================
+        function calculatePortfolio() {
+            // Sort transactions chronologically (oldest first) for accurate average cost calculation
+            const sortedTx = [...appState.transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            const holdingsMap = {}; // Key: "SYMBOL_CURRENCY"
+
+            sortedTx.forEach(tx => {
+                // Filter by selected currency if not ALL
+                if (appState.currencyFilter !== 'ALL' && tx.currency !== appState.currencyFilter) {
+                    return;
+                }
+
+                const key = `${tx.symbol}_${tx.currency}`;
+                if (!holdingsMap[key]) {
+                    holdingsMap[key] = {
+                        key: key,
+                        symbol: tx.symbol,
+                        currency: tx.currency,
+                        shares: 0,
+                        totalCost: 0,
+                        avgCost: 0,
+                        realizedPnL: 0,
+                        dividends: 0,
+                        lastTxPrice: 0
+                    };
+                }
+
+                const h = holdingsMap[key];
+                const shares = parseFloat(tx.shares) || 0;
+                const price = parseFloat(tx.price) || 0;
+                const fee = parseFloat(tx.fee) || 0;
+
+                if (tx.type === 'BUY') {
+                    const costOfPurchase = (shares * price) + fee;
+                    h.totalCost += costOfPurchase;
+                    h.shares += shares;
+                    h.avgCost = h.shares > 0 ? (h.totalCost / h.shares) : 0;
+                    h.lastTxPrice = price;
+                } 
+                else if (tx.type === 'SELL') {
+                    const revenue = (shares * price) - fee;
+                    const costBasisOfSold = shares * h.avgCost;
+                    h.realizedPnL += (revenue - costBasisOfSold);
+                    h.shares = Math.max(0, h.shares - shares);
+                    h.totalCost = Math.max(0, h.totalCost - costBasisOfSold);
+                    if (h.shares === 0) {
+                        h.avgCost = 0;
+                        h.totalCost = 0;
+                    }
+                    h.lastTxPrice = price;
+                } 
+                else if (tx.type === 'DIVIDEND') {
+                    // For dividend, tx.price stores the net dividend amount received (or shares * price if entered per share, handled cleanly in form)
+                    h.dividends += (price - fee);
+                }
+            });
+
+            // Finalize current valuation for each holding
+            const holdingsList = Object.values(holdingsMap).map(h => {
+                const currentPrice = appState.marketPrices[h.key] !== undefined 
+                    ? parseFloat(appState.marketPrices[h.key]) 
+                    : h.lastTxPrice;
+                
+                const currentValue = h.shares * currentPrice;
+                const unrealizedPnL = currentValue - h.totalCost;
+                const unrealizedPnLPercent = h.totalCost > 0 ? (unrealizedPnL / h.totalCost) * 100 : 0;
+
+                return {
+                    ...h,
+                    currentPrice,
+                    currentValue,
+                    unrealizedPnL,
+                    unrealizedPnLPercent
+                };
+            });
+
+            // Aggregate Dashboard Totals (normalized to display currency)
+            let totalInvested = 0;
+            let totalCurrentValue = 0;
+            let totalRealizedPnL = 0;
+            let totalDividends = 0;
+            let activeAssetsCount = 0;
+
+            holdingsList.forEach(h => {
+                const multiplier = (appState.currencyFilter === 'ALL' && h.currency === 'USD') ? appState.usdToThb : 1;
+                
+                totalInvested += h.totalCost * multiplier;
+                totalCurrentValue += h.currentValue * multiplier;
+                totalRealizedPnL += h.realizedPnL * multiplier;
+                totalDividends += h.dividends * multiplier;
+                
+                if (h.shares > 0.000001) {
+                    activeAssetsCount++;
+                }
+            });
+
+            const totalUnrealizedPnL = totalCurrentValue - totalInvested;
+            const totalUnrealizedPnLPercent = totalInvested > 0 ? (totalUnrealizedPnL / totalInvested) * 100 : 0;
+
+            return {
+                holdingsList,
+                summary: {
+                    totalInvested,
+                    totalCurrentValue,
+                    totalUnrealizedPnL,
+                    totalUnrealizedPnLPercent,
+                    totalRealizedPnL,
+                    totalDividends,
+                    activeAssetsCount,
+                    filteredTxCount: sortedTx.filter(t => appState.currencyFilter === 'ALL' || t.currency === appState.currencyFilter).length
+                }
+            };
+        }
+
+        // ==========================================
+        // 3. FORMATTING HELPERS
+        // ==========================================
+        function getCurrencySymbol(curr) {
+            return curr === 'USD' ? '$' : '฿';
+        }
+
+        function formatMoney(amount, currency = 'THB', showSign = false) {
+            const sym = currency === 'USD' ? '$' : '฿';
+            const absVal = Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (showSign) {
+                if (amount > 0.004) return `+${sym}${absVal}`;
+                if (amount < -0.004) return `-${sym}${absVal}`;
+            }
+            return (amount < -0.004 ? '-' : '') + `${sym}${absVal}`;
+        }
+
+        function formatNumber(num, decimals = 2) {
+            return Number(num).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        }
+
+        function formatShares(shares) {
+            // Show up to 4 decimals if fractional, otherwise clean integer/2 decimals
+            return Number(shares).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+        }
+
+        // ==========================================
+        // 4. UI RENDERING FUNCTIONS
+        // ==========================================
+        function renderAll() {
+            const { holdingsList, summary } = calculatePortfolio();
+            const displayCurr = appState.currencyFilter === 'USD' ? 'USD' : 'THB';
+
+            // 1. Update Summary Cards
+            document.getElementById('stat-invested').textContent = formatMoney(summary.totalInvested, displayCurr);
+            document.getElementById('stat-current-value').textContent = formatMoney(summary.totalCurrentValue, displayCurr);
+            
+            const pnlEl = document.getElementById('stat-pnl');
+            const pnlPctEl = document.getElementById('stat-pnl-percent');
+            const pnlIconBg = document.getElementById('stat-pnl-icon-bg');
+            const pnlIcon = document.getElementById('stat-pnl-icon');
+
+            pnlEl.textContent = formatMoney(summary.totalUnrealizedPnL, displayCurr, true);
+            const pctSign = summary.totalUnrealizedPnLPercent > 0.004 ? '+' : '';
+            pnlPctEl.textContent = `${pctSign}${summary.totalUnrealizedPnLPercent.toFixed(2)}%`;
+
+            if (summary.totalUnrealizedPnL > 0.004) {
+                pnlEl.className = 'text-xl sm:text-2xl font-bold font-num text-emerald-600';
+                pnlPctEl.className = 'text-xs font-semibold font-num px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700';
+                pnlIconBg.className = 'w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center';
+                pnlIcon.className = 'fa-solid fa-arrow-trend-up';
+            } else if (summary.totalUnrealizedPnL < -0.004) {
+                pnlEl.className = 'text-xl sm:text-2xl font-bold font-num text-rose-600';
+                pnlPctEl.className = 'text-xs font-semibold font-num px-2 py-0.5 rounded-md bg-rose-50 text-rose-700';
+                pnlIconBg.className = 'w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center';
+                pnlIcon.className = 'fa-solid fa-arrow-trend-down';
+            } else {
+                pnlEl.className = 'text-xl sm:text-2xl font-bold font-num text-slate-900';
+                pnlPctEl.className = 'text-xs font-semibold font-num px-2 py-0.5 rounded-md bg-slate-100 text-slate-600';
+                pnlIconBg.className = 'w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center';
+                pnlIcon.className = 'fa-solid fa-minus';
+            }
+
+            document.getElementById('stat-realized-pnl').textContent = `ขายแล้ว: ${formatMoney(summary.totalRealizedPnL, displayCurr, true)}`;
+            document.getElementById('stat-dividends').textContent = formatMoney(summary.totalDividends, displayCurr);
+            
+            const netTotalReturn = summary.totalUnrealizedPnL + summary.totalRealizedPnL + summary.totalDividends;
+            document.getElementById('stat-total-return').textContent = `ผลตอบแทนสุทธิรวม: ${formatMoney(netTotalReturn, displayCurr, true)}`;
+
+            document.getElementById('stat-assets-count').textContent = `${summary.activeAssetsCount} ตัว`;
+            document.getElementById('stat-tx-count').textContent = `จากทั้งหมด ${summary.filteredTxCount} รายการ`;
+
+            // 2. Render Holdings Table
+            renderHoldingsTable(holdingsList);
+
+            // 3. Render Transactions Table
+            renderTransactions();
+
+            // 4. Render Charts
+            renderCharts(holdingsList);
+
+            // 5. Update Symbol Datalist
+            updateSymbolDatalist();
+        }
+
+        function renderHoldingsTable(holdingsList) {
+            const tbody = document.getElementById('holdings-tbody');
+            const showSold = document.getElementById('toggle-sold-stocks').checked;
+            
+            const filtered = holdingsList
+                .filter(h => showSold || h.shares > 0.000001)
+                .sort((a, b) => b.currentValue - a.currentValue);
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="9" class="py-12 text-center text-slate-400">
+                            <div class="flex flex-col items-center justify-center">
+                                <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-300"></i>
+                                <p class="text-sm font-medium text-slate-500">ยังไม่มีข้อมูลหุ้นในพอร์ต</p>
+                                <p class="text-xs mt-1">กดปุ่ม <span class="text-emerald-600 font-semibold">"+ บันทึกรายการ"</span> ด้านบน หรือกด <span class="text-indigo-600 font-semibold">"ข้อมูลตัวอย่าง"</span> เพื่อเริ่มต้น</p>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(h => {
+                const isProfit = h.unrealizedPnL > 0.004;
+                const isLoss = h.unrealizedPnL < -0.004;
+                const pnlColor = isProfit ? 'text-emerald-600' : (isLoss ? 'text-rose-600' : 'text-slate-600');
+                const badgeBg = isProfit ? 'bg-emerald-50 text-emerald-700' : (isLoss ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600');
+                const flag = h.currency === 'USD' ? '🇺🇸' : '🇹🇭';
+
+                return `
+                    <tr class="hover:bg-slate-50/90 transition group">
+                        <td class="py-3.5 px-4">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-9 h-9 rounded-xl bg-slate-900 text-white font-bold text-xs flex items-center justify-center shadow-sm">
+                                    ${h.symbol.substring(0, 4)}
+                                </div>
+                                <div>
+                                    <div class="font-bold text-slate-900 flex items-center gap-1.5">
+                                        ${h.symbol}
+                                        <span class="text-xs font-normal text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">${flag} ${h.currency}</span>
+                                    </div>
+                                    ${h.realizedPnL !== 0 ? `<div class="text-[11px] text-slate-400 font-num">กำไรขายแล้ว: ${formatMoney(h.realizedPnL, h.currency, true)}</div>` : ''}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-3.5 px-4 text-right font-num font-medium text-slate-800">
+                            ${formatShares(h.shares)}
+                        </td>
+                        <td class="py-3.5 px-4 text-right font-num text-slate-600">
+                            ${formatMoney(h.avgCost, h.currency)}
+                        </td>
+                        <td class="py-3.5 px-4 text-right font-num font-medium text-slate-800">
+                            ${formatMoney(h.totalCost, h.currency)}
+                        </td>
+                        <td class="py-3.5 px-4 text-right bg-blue-50/30">
+                            <div class="inline-flex items-center justify-end gap-1">
+                                <span class="text-xs text-slate-400">${getCurrencySymbol(h.currency)}</span>
+                                <input type="number" step="any" min="0" value="${h.currentPrice}" 
+                                    onchange="updateMarketPrice('${h.key}', this.value)"
+                                    class="w-24 text-right font-num font-semibold text-blue-700 bg-white border border-blue-200 hover:border-blue-400 focus:border-blue-600 rounded-lg px-2 py-1 text-sm focus:outline-none shadow-sm transition">
+                            </div>
+                        </td>
+                        <td class="py-3.5 px-4 text-right font-num font-bold text-slate-900">
+                            ${formatMoney(h.currentValue, h.currency)}
+                        </td>
+                        <td class="py-3.5 px-4 text-right font-num">
+                            <div class="font-bold ${pnlColor}">${formatMoney(h.unrealizedPnL, h.currency, true)}</div>
+                            <span class="inline-block text-[11px] font-semibold px-1.5 py-0.5 rounded ${badgeBg}">
+                                ${h.unrealizedPnLPercent > 0.004 ? '+' : ''}${h.unrealizedPnLPercent.toFixed(2)}%
+                            </span>
+                        </td>
+                        <td class="py-3.5 px-4 text-right font-num text-amber-600 font-medium">
+                            ${h.dividends > 0 ? formatMoney(h.dividends, h.currency) : '-'}
+                        </td>
+                        <td class="py-3.5 px-4 text-center">
+                            <div class="flex items-center justify-center gap-1">
+                                <button onclick="quickAction('${h.symbol}', '${h.currency}', 'BUY')" title="ซื้อเพิ่ม" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition">
+                                    <i class="fa-solid fa-plus"></i>
+                                </button>
+                                <button onclick="quickAction('${h.symbol}', '${h.currency}', 'SELL')" title="ขายหุ้น" class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition">
+                                    <i class="fa-solid fa-minus"></i>
+                                </button>
+                                <button onclick="quickAction('${h.symbol}', '${h.currency}', 'DIVIDEND')" title="บันทึกปันผล" class="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition">
+                                    <i class="fa-solid fa-coins"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderTransactions() {
+            const tbody = document.getElementById('transactions-tbody');
+            const searchQuery = document.getElementById('search-tx').value.trim().toUpperCase();
+            const typeFilter = document.getElementById('filter-tx-type').value;
+
+            const filtered = [...appState.transactions]
+                .filter(tx => {
+                    if (appState.currencyFilter !== 'ALL' && tx.currency !== appState.currencyFilter) return false;
+                    if (typeFilter !== 'ALL' && tx.type !== typeFilter) return false;
+                    if (searchQuery) {
+                        const matchSymbol = tx.symbol.toUpperCase().includes(searchQuery);
+                        const matchNote = (tx.note || '').toUpperCase().includes(searchQuery);
+                        return matchSymbol || matchNote;
+                    }
+                    return true;
+                })
+                .sort((a, b) => new Date(b.date) - new Date(a.date)); // Newest first
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="9" class="py-8 text-center text-slate-400 text-sm">
+                            ไม่พบประวัติการทำรายการที่ตรงกับเงื่อนไข
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(tx => {
+                let typeBadge = '';
+                let netAmount = 0;
+                const shares = parseFloat(tx.shares) || 0;
+                const price = parseFloat(tx.price) || 0;
+                const fee = parseFloat(tx.fee) || 0;
+
+                if (tx.type === 'BUY') {
+                    typeBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800"><i class="fa-solid fa-arrow-down text-[10px]"></i> ซื้อ</span>`;
+                    netAmount = (shares * price) + fee;
+                } else if (tx.type === 'SELL') {
+                    typeBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800"><i class="fa-solid fa-arrow-up text-[10px]"></i> ขาย</span>`;
+                    netAmount = (shares * price) - fee;
+                } else {
+                    typeBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800"><i class="fa-solid fa-coins text-[10px]"></i> ปันผล</span>`;
+                    netAmount = price - fee;
+                }
+
+                const formattedDate = new Date(tx.date).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+
+                return `
+                    <tr class="hover:bg-slate-50/80 transition">
+                        <td class="py-3 px-4 text-slate-600 whitespace-nowrap font-num text-xs">${formattedDate}</td>
+                        <td class="py-3 px-4 whitespace-nowrap">${typeBadge}</td>
+                        <td class="py-3 px-4 font-bold text-slate-800">
+                            ${tx.symbol} <span class="text-[11px] font-normal text-slate-400">(${tx.currency})</span>
+                        </td>
+                        <td class="py-3 px-4 text-right font-num text-slate-700">
+                            ${tx.type === 'DIVIDEND' ? '-' : formatShares(shares)}
+                        </td>
+                        <td class="py-3 px-4 text-right font-num text-slate-700">
+                            ${formatMoney(price, tx.currency)}
+                        </td>
+                        <td class="py-3 px-4 text-right font-num text-slate-400 text-xs">
+                            ${fee > 0 ? formatMoney(fee, tx.currency) : '-'}
+                        </td>
+                        <td class="py-3 px-4 text-right font-num font-semibold text-slate-900">
+                            ${formatMoney(netAmount, tx.currency)}
+                        </td>
+                        <td class="py-3 px-4 text-slate-500 text-xs max-w-[200px] truncate" title="${tx.note || ''}">
+                            ${tx.note || '<span class="text-slate-300">-</span>'}
+                        </td>
+                        <td class="py-3 px-4 text-center whitespace-nowrap">
+                            <button onclick="editTransaction('${tx.id}')" class="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg transition" title="แก้ไข">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                            </button>
+                            <button onclick="deleteTransaction('${tx.id}')" class="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg transition" title="ลบ">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ==========================================
+        // 5. CHARTS VISUALIZATION (CHART.JS)
+        // ==========================================
+        function renderCharts(holdingsList) {
+            const activeHoldings = holdingsList
+                .filter(h => h.shares > 0.000001)
+                .map(h => {
+                    const mult = (appState.currencyFilter === 'ALL' && h.currency === 'USD') ? appState.usdToThb : 1;
+                    return {
+                        label: `${h.symbol} (${h.currency})`,
+                        symbol: h.symbol,
+                        cost: h.totalCost * mult,
+                        value: h.currentValue * mult
+                    };
+                })
+                .sort((a, b) => b.value - a.value);
+
+            const allocEmpty = document.getElementById('allocation-empty');
+            const compEmpty = document.getElementById('comparison-empty');
+
+            if (activeHoldings.length === 0) {
+                allocEmpty.classList.remove('hidden');
+                compEmpty.classList.remove('hidden');
+                if (allocationChartInstance) allocationChartInstance.destroy();
+                if (comparisonChartInstance) comparisonChartInstance.destroy();
+                allocationChartInstance = null;
+                comparisonChartInstance = null;
+                return;
+            } else {
+                allocEmpty.classList.add('hidden');
+                compEmpty.classList.add('hidden');
+            }
+
+            const palette = [
+                '#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
+                '#06b6d4', '#f97316', '#6366f1', '#14b8a6', '#84cc16'
+            ];
+
+            // 1. Donut Chart: Portfolio Allocation
+            const ctxAlloc = document.getElementById('allocationChart').getContext('2d');
+            if (allocationChartInstance) allocationChartInstance.destroy();
+
+            allocationChartInstance = new Chart(ctxAlloc, {
+                type: 'doughnut',
+                data: {
+                    labels: activeHoldings.map(h => h.label),
+                    datasets: [{
+                        data: activeHoldings.map(h => h.value),
+                        backgroundColor: palette,
+                        borderWidth: 2,
+                        borderColor: '#ffffff',
+                        hoverOffset: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                font: { family: 'Prompt', size: 12 },
+                                boxWidth: 12,
+                                padding: 14
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const val = context.raw;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const pct = ((val / total) * 100).toFixed(1);
+                                    const curr = appState.currencyFilter === 'USD' ? '$' : '฿';
+                                    return ` ${curr}${val.toLocaleString('en-US', {maximumFractionDigits: 0})} (${pct}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 2. Bar Chart: Cost vs Current Value
+            const ctxComp = document.getElementById('comparisonChart').getContext('2d');
+            if (comparisonChartInstance) comparisonChartInstance.destroy();
+
+            comparisonChartInstance = new Chart(ctxComp, {
+                type: 'bar',
+                data: {
+                    labels: activeHoldings.map(h => h.symbol),
+                    datasets: [
+                        {
+                            label: 'ต้นทุนรวม (Cost)',
+                            data: activeHoldings.map(h => h.cost),
+                            backgroundColor: '#94a3b8',
+                            borderRadius: 6,
+                            barPercentage: 0.7,
+                            categoryPercentage: 0.6
+                        },
+                        {
+                            label: 'มูลค่าปัจจุบัน (Value)',
+                            data: activeHoldings.map(h => h.value),
+                            backgroundColor: '#2563eb',
+                            borderRadius: 6,
+                            barPercentage: 0.7,
+                            categoryPercentage: 0.6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f1f5f9' },
+                            ticks: {
+                                font: { family: 'Inter', size: 11 },
+                                callback: function(val) {
+                                    const curr = appState.currencyFilter === 'USD' ? '$' : '฿';
+                                    return curr + val.toLocaleString();
+                                }
+                            }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { family: 'Prompt', weight: '600', size: 12 } }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const curr = appState.currencyFilter === 'USD' ? '$' : '฿';
+                                    return ` ${context.dataset.label}: ${curr}${context.raw.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ==========================================
+        // 6. INTERACTIVE ACTIONS & MODAL LOGIC
+        // ==========================================
+        function setCurrencyFilter(curr) {
+            appState.currencyFilter = curr;
+            ['ALL', 'THB', 'USD'].forEach(c => {
+                const btn = document.getElementById(`btn-curr-${c}`);
+                if (c === curr) {
+                    btn.className = 'px-2.5 py-1 text-xs font-medium rounded-md transition bg-blue-600 text-white shadow-sm';
+                } else {
+                    btn.className = 'px-2.5 py-1 text-xs font-medium rounded-md transition text-slate-300 hover:text-white';
+                }
+            });
+
+            const badge = document.getElementById('view-mode-badge');
+            if (curr === 'ALL') {
+                badge.innerHTML = `<i class="fa-solid fa-globe text-blue-600"></i> แสดงผลรวมทุกสกุลเงิน (แปลงเป็น THB)`;
+            } else if (curr === 'THB') {
+                badge.innerHTML = `🇹🇭 แสดงเฉพาะพอร์ตหุ้นไทย (THB)`;
+            } else {
+                badge.innerHTML = `🇺🇸 แสดงเฉพาะพอร์ตหุ้นต่างประเทศ (USD)`;
+            }
+
+            renderAll();
+        }
+
+        function updateExchangeRate(val) {
+            const rate = parseFloat(val);
+            if (rate > 0) {
+                appState.usdToThb = rate;
+                document.getElementById('usd-thb-rate').value = rate;
+                document.getElementById('usd-thb-rate-mobile').value = rate;
+                saveState();
+                renderAll();
+                showToast(`อัปเดตอัตราแลกเปลี่ยน 1 USD = ${rate} THB`, "info");
+            }
+        }
+
+        function updateMarketPrice(key, newPriceStr) {
+            const price = parseFloat(newPriceStr);
+            if (!isNaN(price) && price >= 0) {
+                appState.marketPrices[key] = price;
+                saveState();
+                renderAll();
+                const symbol = key.split('_')[0];
+                showToast(`อัปเดตราคาตลาด ${symbol} เป็น ${price} แล้ว`, "success");
+            }
+        }
+
+        function openTransactionModal() {
+            document.getElementById('tx-form').reset();
+            document.getElementById('tx-id').value = '';
+            document.getElementById('modal-title').innerHTML = `<i class="fa-solid fa-plus-circle text-blue-600"></i> บันทึกรายการใหม่`;
+            document.getElementById('tx-date').value = new Date().toISOString().split('T')[0];
+            document.querySelector('input[name="txType"][value="BUY"]').checked = true;
+            toggleFormFieldsByType();
+            calculateModalPreview();
+            document.getElementById('tx-modal').classList.remove('hidden');
+        }
+
+        function quickAction(symbol, currency, type) {
+            openTransactionModal();
+            document.querySelector(`input[name="txType"][value="${type}"]`).checked = true;
+            document.getElementById('tx-symbol').value = symbol;
+            document.getElementById('tx-currency').value = currency;
+            toggleFormFieldsByType();
+            autoFillCurrentPrice();
+        }
+
+        function closeTransactionModal() {
+            document.getElementById('tx-modal').classList.add('hidden');
+        }
+
+        function toggleFormFieldsByType() {
+            const type = document.querySelector('input[name="txType"]:checked').value;
+            const fieldShares = document.getElementById('field-shares');
+            const inputShares = document.getElementById('tx-shares');
+            const labelPrice = document.getElementById('label-price');
+            const fieldCurrPrice = document.getElementById('field-current-price');
+
+            if (type === 'DIVIDEND') {
+                fieldShares.classList.add('opacity-40', 'pointer-events-none');
+                inputShares.removeAttribute('required');
+                inputShares.value = '';
+                labelPrice.innerHTML = `ยอดเงินปันผลรับ (ก่อนหักภาษี/ค่าธรรมเนียม) <span class="text-rose-500">*</span>`;
+                fieldCurrPrice.classList.add('hidden');
+            } else {
+                fieldShares.classList.remove('opacity-40', 'pointer-events-none');
+                inputShares.setAttribute('required', 'required');
+                labelPrice.innerHTML = `ราคาต่อหุ้นที่${type === 'BUY' ? 'ซื้อ' : 'ขาย'} <span class="text-rose-500">*</span>`;
+                fieldCurrPrice.classList.remove('hidden');
+            }
+            calculateModalPreview();
+        }
+
+        function autoFillCurrentPrice() {
+            const symbol = document.getElementById('tx-symbol').value.trim().toUpperCase();
+            const currency = document.getElementById('tx-currency').value;
+            const key = `${symbol}_${currency}`;
+            if (appState.marketPrices[key] !== undefined) {
+                document.getElementById('tx-current-price').value = appState.marketPrices[key];
+            }
+        }
+
+        function calculateModalPreview() {
+            const type = document.querySelector('input[name="txType"]:checked').value;
+            const currency = document.getElementById('tx-currency').value;
+            const shares = parseFloat(document.getElementById('tx-shares').value) || 0;
+            const price = parseFloat(document.getElementById('tx-price').value) || 0;
+            const fee = parseFloat(document.getElementById('tx-fee').value) || 0;
+
+            let total = 0;
+            if (type === 'BUY') total = (shares * price) + fee;
+            else if (type === 'SELL') total = (shares * price) - fee;
+            else total = price - fee;
+
+            document.getElementById('modal-total-preview').textContent = formatMoney(total, currency);
+        }
+
+        function handleTransactionSubmit(e) {
+            e.preventDefault();
+            const id = document.getElementById('tx-id').value;
+            const type = document.querySelector('input[name="txType"]:checked').value;
+            const symbol = document.getElementById('tx-symbol').value.trim().toUpperCase();
+            const currency = document.getElementById('tx-currency').value;
+            const date = document.getElementById('tx-date').value;
+            const shares = type === 'DIVIDEND' ? 0 : (parseFloat(document.getElementById('tx-shares').value) || 0);
+            const price = parseFloat(document.getElementById('tx-price').value) || 0;
+            const fee = parseFloat(document.getElementById('tx-fee').value) || 0;
+            const currentPriceInput = document.getElementById('tx-current-price').value;
+            const note = document.getElementById('tx-note').value.trim();
+
+            if (!symbol) return;
+
+            const txData = {
+                id: id || 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                type,
+                symbol,
+                currency,
+                date,
+                shares,
+                price,
+                fee,
+                note
+            };
+
+            if (id) {
+                const idx = appState.transactions.findIndex(t => t.id === id);
+                if (idx !== -1) appState.transactions[idx] = txData;
+                showToast(`แก้ไขรายการ ${symbol} เรียบร้อยแล้ว`, "success");
+            } else {
+                appState.transactions.push(txData);
+                showToast(`บันทึกรายการ ${symbol} เรียบร้อยแล้ว`, "success");
+            }
+
+            // Update market price if provided or if first time adding this stock
+            const key = `${symbol}_${currency}`;
+            if (type !== 'DIVIDEND') {
+                if (currentPriceInput !== '' && !isNaN(parseFloat(currentPriceInput))) {
+                    appState.marketPrices[key] = parseFloat(currentPriceInput);
+                } else if (appState.marketPrices[key] === undefined) {
+                    appState.marketPrices[key] = price;
+                }
+            }
+
+            saveState();
+            closeTransactionModal();
+            renderAll();
+        }
+
+        function editTransaction(id) {
+            const tx = appState.transactions.find(t => t.id === id);
+            if (!tx) return;
+
+            openTransactionModal();
+            document.getElementById('modal-title').innerHTML = `<i class="fa-solid fa-pen-to-square text-blue-600"></i> แก้ไขรายการ`;
+            document.getElementById('tx-id').value = tx.id;
+            document.querySelector(`input[name="txType"][value="${tx.type}"]`).checked = true;
+            document.getElementById('tx-symbol').value = tx.symbol;
+            document.getElementById('tx-currency').value = tx.currency;
+            document.getElementById('tx-date').value = tx.date;
+            document.getElementById('tx-shares').value = tx.shares;
+            document.getElementById('tx-price').value = tx.price;
+            document.getElementById('tx-fee').value = tx.fee;
+            document.getElementById('tx-note').value = tx.note || '';
+            
+            const key = `${tx.symbol}_${tx.currency}`;
+            if (appState.marketPrices[key] !== undefined) {
+                document.getElementById('tx-current-price').value = appState.marketPrices[key];
+            }
+
+            toggleFormFieldsByType();
+            calculateModalPreview();
+        }
+
+        function deleteTransaction(id) {
+            appState.transactions = appState.transactions.filter(t => t.id !== id);
+            saveState();
+            renderAll();
+            showToast("ลบรายการเรียบร้อยแล้ว", "info");
+        }
+
+        function updateSymbolDatalist() {
+            const datalist = document.getElementById('existing-symbols');
+            const uniqueSymbols = [...new Set(appState.transactions.map(t => t.symbol))];
+            datalist.innerHTML = uniqueSymbols.map(s => `<option value="${s}">`).join('');
+        }
+
+        // ==========================================
+        // 7. SAMPLE DATA, EXPORT / IMPORT & CLEAR
+        // ==========================================
+        function loadSampleData() {
+            appState.transactions = [
+                { id: 's1', type: 'BUY', symbol: 'PTT', currency: 'THB', date: '2025-06-15', shares: 1000, price: 32.50, fee: 54.28, note: 'ซื้อสะสมรับปันผลระยะยาว' },
+                { id: 's2', type: 'BUY', symbol: 'PTT', currency: 'THB', date: '2025-09-10', shares: 500, price: 31.00, fee: 25.89, note: 'DCA เพิ่มเมื่อราคาย่อ' },
+                { id: 's3', type: 'DIVIDEND', symbol: 'PTT', currency: 'THB', date: '2025-10-15', shares: 0, price: 1200, fee: 120, note: 'ปันผลระหว่างกาล (หัก ณ ที่จ่าย 10%)' },
+                { id: 's4', type: 'BUY', symbol: 'AOT', currency: 'THB', date: '2025-08-01', shares: 400, price: 58.00, fee: 38.74, note: 'ธีมท่องเที่ยวฟื้นตัว' },
+                { id: 's5', type: 'BUY', symbol: 'NVDA', currency: 'USD', date: '2025-07-20', shares: 10, price: 118.50, fee: 1.50, note: 'หุ้นเติบโต AI Mega Trend' },
+                { id: 's6', type: 'BUY', symbol: 'AAPL', currency: 'USD', date: '2025-08-12', shares: 8, price: 215.00, fee: 1.50, note: 'Core Portfolio หุ้นพื้นฐานแกร่ง' },
+                { id: 's7', type: 'SELL', symbol: 'NVDA', currency: 'USD', date: '2025-11-05', shares: 3, price: 138.00, fee: 1.20, note: 'แบ่งขายทำกำไรบางส่วน' }
+            ];
+
+            appState.marketPrices = {
+                'PTT_THB': 34.25,
+                'AOT_THB': 61.50,
+                'NVDA_USD': 142.80,
+                'AAPL_USD': 228.40
+            };
+
+            saveState();
+            renderAll();
+            showToast("โหลดข้อมูลตัวอย่างเรียบร้อยแล้ว!", "success");
+        }
+
+        function exportDataJSON() {
+            const dataStr = JSON.stringify(appState, null, 2);
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const dateStr = new Date().toISOString().split('T')[0];
+            a.href = url;
+            a.download = `StockFolio_Backup_${dateStr}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast("ดาวน์โหลดไฟล์สำรองข้อมูลเรียบร้อยแล้ว", "success");
+        }
+
+        function importDataJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (Array.isArray(imported.transactions)) {
+                        appState.transactions = imported.transactions;
+                        appState.marketPrices = imported.marketPrices || {};
+                        if (imported.usdToThb) {
+                            appState.usdToThb = imported.usdToThb;
+                            document.getElementById('usd-thb-rate').value = appState.usdToThb;
+                            document.getElementById('usd-thb-rate-mobile').value = appState.usdToThb;
+                        }
+                        saveState();
+                        renderAll();
+                        showToast("นำเข้าข้อมูลสำเร็จ!", "success");
+                    } else {
+                        showToast("รูปแบบไฟล์ไม่ถูกต้อง", "error");
+                    }
+                } catch (err) {
+                    showToast("ไม่สามารถอ่านไฟล์ได้ กรุณาตรวจสอบไฟล์ JSON", "error");
+                }
+                event.target.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        function openClearModal() {
+            document.getElementById('clear-modal').classList.remove('hidden');
+        }
+
+        function closeClearModal() {
+            document.getElementById('clear-modal').classList.add('hidden');
+        }
+
+        function confirmClearAllData() {
+            appState.transactions = [];
+            appState.marketPrices = {};
+            saveState();
+            closeClearModal();
+            renderAll();
+            showToast("ล้างข้อมูลทั้งหมดเรียบร้อยแล้ว", "info");
+        }
+
+        // ==========================================
+        // 8. TOAST NOTIFICATION SYSTEM
+        // ==========================================
+        function showToast(message, type = "info") {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            let bgClass = 'bg-slate-800 text-white';
+            let icon = 'fa-circle-info';
+            if (type === 'success') { bgClass = 'bg-emerald-600 text-white'; icon = 'fa-circle-check'; }
+            if (type === 'error') { bgClass = 'bg-rose-600 text-white'; icon = 'fa-circle-exclamation'; }
+
+            toast.className = `${bgClass} px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2.5 transform transition-all duration-300 translate-y-2 opacity-0`;
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+            
+            container.appendChild(toast);
+            
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Initialize App on Window Load
+        window.onload = function() {
+            loadState();
+            renderAll();
+        };
+    </script>
+</body>
+</html>
